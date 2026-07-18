@@ -1,0 +1,27 @@
+# ---- .NET / C# (Bolo and future .NET projects) ----
+[Bb]in/
+[Oo]bj/
+publish/
+Bolo/                 # self-contained publish output (rebuild with publish.ps1)
+*.user
+*.suo
+.vs/
+
+# ---- Speech models & large binaries — downloaded, never committed (~1.6 GB) ----
+models/
+*.bin
+
+# ---- User data & local audio (never in the repo) ----
+# Bolo keeps its data in %APPDATA%\Bolo, not in-tree; this is belt-and-suspenders.
+*.wav
+
+# ---- Python (future projects) ----
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db

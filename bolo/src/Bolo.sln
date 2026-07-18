@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bolo.Core", "Bolo.Core\Bolo.Core.csproj", "{2DEC798E-C836-4DDC-90E3-A06A3D23B110}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bolo.App", "Bolo.App\Bolo.App.csproj", "{4547D386-1989-4241-B6EE-B48FB32EA9D3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bolo.SmokeTest", "Bolo.SmokeTest\Bolo.SmokeTest.csproj", "{01F629FC-E4E1-49A4-A287-183304F9FD7C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2DEC798E-C836-4DDC-90E3-A06A3D23B110}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2DEC798E-C836-4DDC-90E3-A06A3D23B110}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2DEC798E-C836-4DDC-90E3-A06A3D23B110}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2DEC798E-C836-4DDC-90E3-A06A3D23B110}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4547D386-1989-4241-B6EE-B48FB32EA9D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4547D386-1989-4241-B6EE-B48FB32EA9D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4547D386-1989-4241-B6EE-B48FB32EA9D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4547D386-1989-4241-B6EE-B48FB32EA9D3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{01F629FC-E4E1-49A4-A287-183304F9FD7C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{01F629FC-E4E1-49A4-A287-183304F9FD7C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{01F629FC-E4E1-49A4-A287-183304F9FD7C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{01F629FC-E4E1-49A4-A287-183304F9FD7C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
