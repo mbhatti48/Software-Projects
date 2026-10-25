@@ -1,3 +1,4 @@
+using System.IO;
 using System.Diagnostics;
 using Bolo.Core.Engine;
 using Bolo.Core.Learning;
@@ -25,6 +26,8 @@ public sealed class DictationController : IDisposable
 
     public DictationState State { get; private set; } = DictationState.Loading;
     public string LoadedRuntime => _transcriber.LoadedRuntime;
+    /// <summary>Microphone peak level while recording, 0..1 (drives the overlay's bars).</summary>
+    public float InputLevel => _recorder.IsRecording ? _recorder.Level : 0;
 
     public event Action<DictationState>? StateChanged;
     public event Action<string>? TranscriptReady;
@@ -58,7 +61,55 @@ public sealed class DictationController : IDisposable
         WhisperTranscriber.ConfigureRuntime(_settings.ForceCpu);
         var prompt = Vocabulary.BuildPrompt();
         await Task.Run(() => _transcriber.Load(_settings.ModelPath, _settings.Language, prompt));
+        // The Silero VAD model (ggml-silero-*.bin) lives beside the Whisper model. Optional:
+        // without it the duration gate alone applies, as before v1.3.0.
+        var modelsDir = Path.GetDirectoryName(_settings.ModelPath) ?? "";
+        var vadModel = Directory.Exists(modelsDir)
+            ? Directory.GetFiles(modelsDir, "ggml-silero*.bin").OrderDescending().FirstOrDefault()
+            : null;
+        if (vadModel is not null)
+        {
+            try
+            {
+                await Task.Run(() => _transcriber.LoadVad(vadModel));
+                BoloLog.Write($"VAD loaded: {Path.GetFileName(vadModel)}");
+            }
+            catch (Exception ex)
+            {
+                BoloLog.Write($"VAD load failed, duration gate only: {ex.Message}");
+            }
+        }
+        else
+        {
+            BoloLog.Write("no VAD model beside the Whisper model: duration gate only");
+        }
         SetState(DictationState.Idle);
+    }
+
+    public bool HasVad => _transcriber.HasVad;
+
+    /// <summary>
+    /// Esc while recording: throw the take away. No transcription, nothing injected,
+    /// nothing stored. Ignored once a stop is already in flight.
+    /// </summary>
+    public void CancelDictation()
+    {
+        if (State != DictationState.Recording)
+            return;
+        if (Interlocked.Exchange(ref _stopInFlight, 1) == 1)
+            return;
+        try
+        {
+            _partialCts?.Cancel();
+            _partialCts = null;
+            try { _recorder.Stop().Dispose(); } catch { /* already stopped */ }
+            BoloLog.Write("recording cancelled (Esc)");
+            SetState(DictationState.Idle);
+        }
+        finally
+        {
+            Volatile.Write(ref _stopInFlight, 0);
+        }
     }
 
     /// <summary>Hotkey handler for toggle mode: tap to start, tap again to stop.</summary>
@@ -138,8 +189,22 @@ public sealed class DictationController : IDisposable
     {
         if (State != DictationState.Recording)
             return;
-        await StopAndTranscribeAsync();
+        // Two stoppers can race on different threads (hold-release watcher vs the
+        // 5-minute cap, or hotkey vs tray): only the first may stop the recorder, or the
+        // second throws "Not recording" and flips the state to Idle mid-transcription.
+        if (Interlocked.Exchange(ref _stopInFlight, 1) == 1)
+            return;
+        try
+        {
+            await StopAndTranscribeAsync();
+        }
+        finally
+        {
+            Volatile.Write(ref _stopInFlight, 0);
+        }
     }
+
+    private int _stopInFlight;
 
     /// <summary>
     /// While recording, periodically re-transcribes the growing buffer so the overlay
@@ -175,6 +240,10 @@ public sealed class DictationController : IDisposable
                 }
                 using (snapshot)
                 {
+                    // No speech in the tail yet (VAD): skip the pass instead of letting
+                    // Whisper invent ghost text from room noise.
+                    if (!SpeechGate.HasSpeech(await _transcriber.DetectSpeechSecondsAsync(snapshot, ct)))
+                        continue;
                     var text = await _transcriber.TranscribeAsync(snapshot, ct);
                     if (!ct.IsCancellationRequested && State == DictationState.Recording
                         && !string.IsNullOrWhiteSpace(text))
@@ -203,6 +272,14 @@ public sealed class DictationController : IDisposable
             var audioSeconds = Math.Max(0, (wav.Length - 44.0) / (16000 * 2)); // 16kHz 16-bit mono
             if (audioSeconds < MinAudioSeconds)
                 return; // too short to be intentional speech — avoids silence hallucinations
+            // Voice activity check (v1.3.0): a take with no detected speech is discarded
+            // before Whisper can hallucinate "*sad music*" from it.
+            var speechSeconds = await _transcriber.DetectSpeechSecondsAsync(wav);
+            if (!SpeechGate.HasSpeech(speechSeconds))
+            {
+                BoloLog.Write($"no speech detected ({audioSeconds:F1}s audio, {speechSeconds:F2}s speech): take discarded");
+                return;
+            }
             var timer = Stopwatch.StartNew();
             var text = await _transcriber.TranscribeAsync(wav);
             timer.Stop();

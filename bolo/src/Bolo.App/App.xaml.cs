@@ -8,6 +8,7 @@ namespace Bolo.App;
 public partial class App : Application
 {
     private static Mutex? _singleInstanceMutex;
+    private static bool _ownsSingleInstanceMutex;
     private const string ActivationSignalName = "BoloActivateSignal";
     private static EventWaitHandle? _activationSignal;
 
@@ -16,11 +17,20 @@ public partial class App : Application
     private TrayIcon _tray = null!;
     private OverlayWindow _overlay = null!;
     private HotkeyManager? _hotkey;
+    private EscapeCancel? _esc;
     private Ui.MainWindow? _mainWindow;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Verification tool: render every screen to PNG and exit (no hotkey, mic, model, tray or mutex).
+        if (e.Args is ["--screenshots", var shotDir])
+        {
+            await Ui.Screenshots.RunAsync(shotDir);
+            Shutdown();
+            return;
+        }
 
         // Startup breadcrumbs: if a launch ever wedges into a fake first-run again, these
         // three lines pin down exactly where it diverged — process, data root, whether we
@@ -28,6 +38,7 @@ public partial class App : Application
         BoloLog.Write($"OnStartup entered (pid {Environment.ProcessId}, data root: {BoloPaths.Root})");
 
         _singleInstanceMutex = new Mutex(true, "BoloDictationApp", out var isNewInstance);
+        _ownsSingleInstanceMutex = isNewInstance;
         BoloLog.Write($"single-instance check: isNewInstance={isNewInstance}");
         if (!isNewInstance)
         {
@@ -77,21 +88,18 @@ public partial class App : Application
         }
 
         _controller = new DictationController(_settings);
-        _tray = new TrayIcon();
-        _overlay = new OverlayWindow(_settings);
-
-        _tray.ToggleRequested += () => _controller.Toggle();
-        _tray.OpenRequested += ShowMainWindow;
-        _tray.CopyLastRequested += CopyLastTranscript;
-        _tray.FixLastRequested += FixLastTranscript;
-        _tray.SaveLastRequested += SaveLastTranscript;
-        _tray.ExitRequested += Shutdown;
+        _tray = NewTray();
+        _overlay = new OverlayWindow(_settings, () => _controller.InputLevel);
+        _esc = new EscapeCancel();
+        _esc.Pressed += () => _controller.CancelDictation();
 
         BoloLog.Write($"--- Bolo starting (hotkey: {_settings.Hotkey}, model: {_settings.ModelPath}) ---");
 
         _controller.StateChanged += state => Dispatcher.Invoke(() =>
         {
             BoloLog.Write($"state -> {state}");
+            // Esc is claimed only while recording (EscapeCancel).
+            if (state == DictationState.Recording) _esc?.Arm(); else _esc?.Disarm();
             _tray.SetState(state, _controller.LoadedRuntime);
             switch (state)
             {
@@ -206,8 +214,33 @@ public partial class App : Application
     internal void RecreateOverlay()
     {
         var old = _overlay;
-        _overlay = new OverlayWindow(_settings);
+        _overlay = new OverlayWindow(_settings, () => _controller.InputLevel);
         old.Close();
+    }
+
+    private TrayIcon NewTray()
+    {
+        var theme = Ui.Theme.FromName(_settings.Theme, _settings.Accent);
+        var tray = new TrayIcon(theme.IsDark, theme.ColorOf(theme.Accent));
+        tray.ToggleRequested += () => _controller.Toggle();
+        tray.OpenRequested += ShowMainWindow;
+        tray.CopyLastRequested += CopyLastTranscript;
+        tray.FixLastRequested += FixLastTranscript;
+        tray.SaveLastRequested += SaveLastTranscript;
+        tray.ExitRequested += Shutdown;
+        tray.HistoryRequested += ShowTrayPopover;
+        return tray;
+    }
+
+    /// <summary>Theme or accent changed: rebuild the window, the tray mark and the overlay in the new colours.</summary>
+    internal void ApplyAppearance(string page)
+    {
+        var oldTray = _tray;
+        _tray = NewTray();
+        _tray.SetState(_controller.State, _controller.LoadedRuntime);
+        oldTray.Dispose();
+        RecreateOverlay();
+        ReopenMainWindow(page);
     }
 
     internal void PreviewOverlay(string sampleText)
@@ -220,6 +253,14 @@ public partial class App : Application
     {
         if (_controller.State != DictationState.Recording)
             _overlay.HideOverlay();
+    }
+
+    private void ShowTrayPopover()
+    {
+        var theme = Ui.Theme.FromName(_settings.Theme, _settings.Accent);
+        var popover = new Ui.TrayPopover(theme, _controller, ShowMainWindow);
+        popover.Show();
+        popover.Activate();
     }
 
     private void ShowMainWindow()
@@ -282,7 +323,7 @@ public partial class App : Application
             _tray.ShowBalloon("Bolo", "No transcripts yet.");
             return;
         }
-        var dialog = new FixTranscriptWindow(last.Text);
+        var dialog = new FixTranscriptWindow(last.Text, _settings);
         if (dialog.ShowDialog() == true)
         {
             var learned = _controller.CorrectLastTranscript(dialog.EditedText);
@@ -313,10 +354,14 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _hotkey?.Dispose();
+        _esc?.Dispose();
         _overlay?.Close();
         _tray?.Dispose();
         _controller?.Dispose();
-        _singleInstanceMutex?.ReleaseMutex();
+        // A second instance never owned the mutex; releasing it there throws
+        // ApplicationException on the way out (v1.2.0 fix).
+        if (_ownsSingleInstanceMutex)
+            _singleInstanceMutex?.ReleaseMutex();
         base.OnExit(e);
     }
 }

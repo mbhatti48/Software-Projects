@@ -45,6 +45,8 @@ public sealed class AppSettings
     public int OverlayEdgeMargin { get; set; } = 48;
 
     public string Theme { get; set; } = "Dark";
+    /// <summary>"Gold" (default, v1.2) or "Red" (the v1.0 brand red). Red always means "recording" either way.</summary>
+    public string Accent { get; set; } = "Gold";
 
     /// <summary>Optional display name for the Home page greeting. Empty = generic greeting.</summary>
     public string UserName { get; set; } = "";

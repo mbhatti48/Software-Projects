@@ -141,19 +141,20 @@ public sealed class HotkeyManager : IDisposable
                     ComboPending?.Invoke();
                     BeginPendingActivation();
                 }
-                else if (!isTargetModifier && _pendingActivation is not null)
+                else if (!isTargetModifier && _pendingActivation is { } pending)
                 {
                     // A regular key while modifiers are held = an app shortcut, not our combo.
-                    _pendingActivation.Cancel();
+                    // (Local copy: the activation task clears the field from another thread.)
+                    pending.Cancel();
                     _pendingActivation = null;
                     ComboCancelled?.Invoke();
                 }
             }
             else if (isUp && isTargetModifier)
             {
-                if (_pendingActivation is not null)
+                if (_pendingActivation is { } pending)
                 {
-                    _pendingActivation.Cancel();
+                    pending.Cancel();
                     _pendingActivation = null;
                     ComboCancelled?.Invoke();
                 }

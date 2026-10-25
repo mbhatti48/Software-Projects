@@ -21,34 +21,40 @@ public sealed class SettingsPage : UserControl
         _app = app;
 
         var panel = new StackPanel();
-        panel.Children.Add(UiKit.Title(t, "Settings"));
+        panel.Children.Add(UiKit.PageHeader(t, "Settings", "Every change saves on its own. Nothing here needs an Apply button."));
 
         panel.Children.Add(Section("Dictation hotkey", BuildHotkeySection()));
         panel.Children.Add(Section("Microphone", BuildMicSection()));
         panel.Children.Add(Section("Text injection", BuildInjectionSection()));
-        panel.Children.Add(Section("Model & engine", BuildModelSection()));
+        panel.Children.Add(Section("Model and engine", BuildModelSection()));
         panel.Children.Add(Section("Overlay", BuildOverlaySection()));
         panel.Children.Add(Section("Appearance", BuildAppearanceSection()));
         panel.Children.Add(Section("Reset", BuildResetSection()));
 
         var version = UiKit.Label(t,
-            $"Bolo v{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3)}",
+            $"Bolo v{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3)} · by EmAyeBee · data in %APPDATA%\\Bolo",
             muted: true);
-        version.Margin = new Thickness(0, 10, 0, 0);
+        version.FontSize = 12;
+        version.Foreground = t.TextFaint;
+        version.Margin = new Thickness(0, 6, 0, 0);
         panel.Children.Add(version);
 
-        Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0, 0, 8, 24) };
     }
 
     private UIElement Section(string title, UIElement body)
     {
-        var header = UiKit.Label(_t, title, muted: true);
-        header.FontWeight = FontWeights.SemiBold;
-        header.Margin = new Thickness(0, 6, 0, 6);
-        var stack = new StackPanel();
-        stack.Children.Add(header);
+        var stack = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
+        stack.Children.Add(UiKit.Section(_t, title));
         stack.Children.Add(UiKit.Card(_t, body));
         return stack;
+    }
+
+    private TextBlock FieldLabel(string text, double top = 14)
+    {
+        var label = UiKit.Caption(_t, text);
+        label.Margin = new Thickness(0, top, 0, 6);
+        return label;
     }
 
     private UIElement BuildHotkeySection()
@@ -56,19 +62,19 @@ public sealed class SettingsPage : UserControl
         var stack = new StackPanel();
 
         // Key-capture box. Regular-key combos bind on the keypress; modifier-only
-        // combos (Ctrl+Shift, Ctrl+Win) bind by HOLDING them for half a second —
-        // no release detection, which is what made Win combos unreliable before.
+        // combos (Ctrl+Shift, Ctrl+Win) bind on release (tap) or a short hold.
         var capture = UiKit.Input(_t, _settings.Hotkey, 220);
         capture.IsReadOnly = true;
-        capture.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+        capture.HorizontalAlignment = HorizontalAlignment.Left;
         capture.TextAlignment = TextAlignment.Center;
-        capture.FontWeight = FontWeights.SemiBold;
+        capture.FontWeight = FontWeights.Bold;
         capture.ToolTip = "Click here, then press a key combo. For modifier-only combos, hold the modifiers together for half a second.";
 
         var status = UiKit.Label(_t,
-            "Click the box, then press a key combo. Modifiers alone (like Ctrl+Shift or Ctrl+Win) work too — hold them together briefly.",
+            "Click the box, then press a key combo. Modifiers alone (Ctrl+Shift, Ctrl+Win) work too: hold them together briefly.",
             muted: true);
-        status.Margin = new Thickness(0, 6, 0, 0);
+        status.FontSize = 13;
+        status.Margin = new Thickness(0, 8, 0, 0);
 
         var holdTimer = new System.Windows.Threading.DispatcherTimer
         {
@@ -99,8 +105,7 @@ public sealed class SettingsPage : UserControl
             }
         }
 
-        // Read physical key state from the OS — WPF's Keyboard.Modifiers omits the
-        // Win key entirely (confirmed via capture logging, 2026-07-03).
+        // Read physical key state from the OS: WPF's Keyboard.Modifiers omits the Win key.
         static List<string> CurrentModifiers() => HotkeyManager.PhysicalModifiersHeld();
 
         holdTimer.Tick += (_, _) =>
@@ -129,12 +134,12 @@ public sealed class SettingsPage : UserControl
             capture.Text = "press keys…";
             capture.BorderBrush = _t.Accent;
             pendingCombo.Clear();
-            status.Text = "Listening — press a key combo, or hold modifiers together for half a second.";
+            status.Text = "Listening: press a key combo, or hold modifiers together for half a second.";
         };
         capture.LostKeyboardFocus += (_, _) =>
         {
             holdTimer.Stop();
-            capture.BorderBrush = _t.CardBorder;
+            capture.BorderBrush = _t.Line2;
             if (capture.Text is "press keys…" or "" || capture.Text.EndsWith("+…"))
                 capture.Text = _settings.Hotkey;
             try { _app.ApplyHotkeySettings(); } catch { /* keep whatever was last bound */ }
@@ -175,7 +180,7 @@ public sealed class SettingsPage : UserControl
         capture.PreviewKeyUp += (_, e) =>
         {
             e.Handled = true;
-            // A quick tap of the combo is clear intent — bind on release, instantly.
+            // A quick tap of the combo is clear intent: bind on release, instantly.
             if (holdTimer.IsEnabled)
             {
                 holdTimer.Stop();
@@ -193,22 +198,21 @@ public sealed class SettingsPage : UserControl
             if (capture.Text.EndsWith("+…") && HotkeyManager.PhysicalModifiersHeld().Count == 0)
             {
                 capture.Text = "press keys…";
-                status.Text = "One modifier alone can't be a hotkey — tap two together (like Ctrl+Win) or add a regular key.";
+                status.Text = "One modifier alone can't be a hotkey. Tap two together (like Ctrl+Win) or add a regular key.";
             }
         };
 
-        var mode = UiKit.Combo(_t, ["Toggle (tap to start / tap to stop)", "Hold-to-talk (hold while speaking)"],
-            _settings.HotkeyMode == HotkeyMode.Toggle
-                ? "Toggle (tap to start / tap to stop)"
-                : "Hold-to-talk (hold while speaking)");
+        var mode = UiKit.Combo(_t, ["Hold to talk (hold while speaking)", "Toggle (tap to start, tap to stop)"],
+            _settings.HotkeyMode == HotkeyMode.HoldToTalk
+                ? "Hold to talk (hold while speaking)"
+                : "Toggle (tap to start, tap to stop)");
         mode.SelectionChanged += (_, _) =>
         {
-            _settings.HotkeyMode = mode.SelectedIndex == 0 ? HotkeyMode.Toggle : HotkeyMode.HoldToTalk;
+            _settings.HotkeyMode = mode.SelectedIndex == 0 ? HotkeyMode.HoldToTalk : HotkeyMode.Toggle;
             _settings.Save();
         };
 
         var reset = UiKit.ActionButton(_t, "Reset");
-        reset.VerticalAlignment = VerticalAlignment.Center;
         reset.ToolTip = "Restore the default hotkey";
         reset.Click += (_, _) => Bind(new AppSettings().Hotkey);
 
@@ -217,22 +221,16 @@ public sealed class SettingsPage : UserControl
 
         // Alternative to keystroke capture: build the combo from menus. Immune to
         // keyboard-software rebinding weirdness at selection time.
-        var pickLabel = UiKit.Label(_t, "Or build the combo manually:", muted: true);
-        pickLabel.Margin = new Thickness(0, 12, 0, 4);
-        stack.Children.Add(pickLabel);
+        stack.Children.Add(FieldLabel("Or build the combo by hand", 16));
 
-        CheckBox Mod(string name)
+        CheckBox Mod(string name) => new()
         {
-            var box = new CheckBox
-            {
-                Content = name,
-                Foreground = _t.Text,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 10, 0),
-                IsChecked = _settings.Hotkey.Contains(name, StringComparison.OrdinalIgnoreCase),
-            };
-            return box;
-        }
+            Content = name,
+            Foreground = _t.TextBody,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+            IsChecked = _settings.Hotkey.Contains(name, StringComparison.OrdinalIgnoreCase),
+        };
         var ctrl = Mod("Ctrl");
         var alt = Mod("Alt");
         var shift = Mod("Shift");
@@ -245,7 +243,7 @@ public sealed class SettingsPage : UserControl
         var currentKey = _settings.Hotkey.Split('+').LastOrDefault(p =>
             p is not ("Ctrl" or "Alt" or "Shift" or "Win")) ?? "(none)";
         var keyPick = UiKit.Combo(_t, pickableKeys, pickableKeys.Contains(currentKey) ? currentKey : "(none)");
-        keyPick.MinWidth = 90;
+        keyPick.MinWidth = 110;
 
         var applyPick = UiKit.ActionButton(_t, "Set", primary: true);
         applyPick.Click += (_, _) =>
@@ -268,9 +266,7 @@ public sealed class SettingsPage : UserControl
         };
 
         stack.Children.Add(UiKit.Row(ctrl, alt, shift, win, keyPick, applyPick));
-        var modeLabel = UiKit.Label(_t, "Mode", muted: true);
-        modeLabel.Margin = new Thickness(0, 10, 0, 4);
-        stack.Children.Add(modeLabel);
+        stack.Children.Add(FieldLabel("Mode"));
         stack.Children.Add(mode);
         return stack;
     }
@@ -283,13 +279,15 @@ public sealed class SettingsPage : UserControl
 
         var selectedIndex = Math.Clamp(_settings.MicDeviceIndex + 1, 0, devices.Count - 1);
         var combo = UiKit.Combo(_t, devices, devices[selectedIndex]);
+        combo.MinWidth = 320;
         combo.SelectionChanged += (_, _) =>
         {
             _settings.MicDeviceIndex = combo.SelectedIndex - 1; // "System default" = -1
             _settings.Save();
         };
         var note = UiKit.Label(_t, "Takes effect on the next dictation.", muted: true);
-        note.Margin = new Thickness(0, 6, 0, 0);
+        note.FontSize = 13;
+        note.Margin = new Thickness(0, 8, 0, 0);
         var stack = new StackPanel();
         stack.Children.Add(combo);
         stack.Children.Add(note);
@@ -302,6 +300,7 @@ public sealed class SettingsPage : UserControl
             _settings.InjectionMode == InjectionMode.Keystrokes
                 ? "Simulated keystrokes (most compatible)"
                 : "Clipboard paste (faster for long text)");
+        combo.MinWidth = 320;
         combo.SelectionChanged += (_, _) =>
         {
             _settings.InjectionMode = combo.SelectedIndex == 0 ? InjectionMode.Keystrokes : InjectionMode.Paste;
@@ -320,8 +319,14 @@ public sealed class SettingsPage : UserControl
             : [Path.GetFileName(_settings.ModelPath)];
 
         var combo = UiKit.Combo(_t, models!, Path.GetFileName(_settings.ModelPath));
-        var status = UiKit.Label(_t, $"Loaded on {_controller.LoadedRuntime}.", muted: true);
-        status.Margin = new Thickness(0, 6, 0, 0);
+        combo.MinWidth = 320;
+        var loaded = _controller.LoadedRuntime is not ("none" or "unknown");
+        var status = UiKit.Label(_t, loaded
+            ? $"Loaded on {_controller.LoadedRuntime}."
+            : $"No model is loaded. Put a ggml model file in {(string.IsNullOrEmpty(modelsDir) ? "a models folder next to Bolo.exe" : modelsDir)} and restart Bolo.",
+            muted: true);
+        status.FontSize = 13;
+        status.Margin = new Thickness(0, 8, 0, 0);
         combo.SelectionChanged += async (_, _) =>
         {
             _settings.ModelPath = Path.Combine(modelsDir, (string)combo.SelectedItem);
@@ -340,10 +345,10 @@ public sealed class SettingsPage : UserControl
 
         var cpu = new CheckBox
         {
-            Content = "Force CPU (skip GPU) — takes effect after restarting Bolo",
+            Content = "Force CPU (skip the GPU). Takes effect after restarting Bolo.",
             IsChecked = _settings.ForceCpu,
-            Foreground = _t.TextMuted,
-            Margin = new Thickness(0, 10, 0, 0),
+            Foreground = _t.TextBody,
+            Margin = new Thickness(0, 14, 0, 0),
         };
         cpu.Checked += (_, _) => { _settings.ForceCpu = true; _settings.Save(); };
         cpu.Unchecked += (_, _) => { _settings.ForceCpu = false; _settings.Save(); };
@@ -365,33 +370,31 @@ public sealed class SettingsPage : UserControl
             SaveAndRecreateOverlay();
         };
 
-        var scale = MakeSlider(0.5, 2.5, _settings.OverlayScale, v =>
+        var scale = MakeSlider(0.5, 2.5, 0.25, _settings.OverlayScale, v => $"{v:F2}×", v =>
         {
             _settings.OverlayScale = Math.Round(v, 2);
             SaveAndRecreateOverlay();
         });
-        var opacity = MakeSlider(0.3, 1.0, _settings.OverlayOpacity, v =>
+        var opacity = MakeSlider(0.3, 1.0, 0.1, _settings.OverlayOpacity, v => $"{v:P0}", v =>
         {
             _settings.OverlayOpacity = Math.Round(v, 2);
             SaveAndRecreateOverlay();
         });
 
-        stack.Children.Add(UiKit.Row(UiKit.Label(_t, "Position", muted: true), position));
-        var scaleLabel = UiKit.Label(_t, "Size", muted: true);
-        scaleLabel.Margin = new Thickness(0, 10, 0, 0);
-        stack.Children.Add(scaleLabel);
+        var posLabel = FieldLabel("Position", 0);
+        stack.Children.Add(posLabel);
+        stack.Children.Add(position);
+        stack.Children.Add(FieldLabel("Size"));
         stack.Children.Add(scale);
-        var opacityLabel = UiKit.Label(_t, "Background opacity", muted: true);
-        opacityLabel.Margin = new Thickness(0, 10, 0, 0);
-        stack.Children.Add(opacityLabel);
+        stack.Children.Add(FieldLabel("Background opacity"));
         stack.Children.Add(opacity);
 
-        var preview = UiKit.ActionButton(_t, "Preview overlay (3s)");
-        preview.Margin = new Thickness(0, 10, 0, 0);
-        preview.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+        var preview = UiKit.ActionButton(_t, "Preview the overlay for 3 seconds");
+        preview.Margin = new Thickness(0, 14, 0, 0);
+        preview.HorizontalAlignment = HorizontalAlignment.Left;
         preview.Click += async (_, _) =>
         {
-            _app.PreviewOverlay("This is how your dictation will look.");
+            _app.PreviewOverlay("This is how your dictation will look while you speak.");
             await Task.Delay(3000);
             _app.HideOverlayPreview();
         };
@@ -399,59 +402,85 @@ public sealed class SettingsPage : UserControl
         return stack;
     }
 
-    private Slider MakeSlider(double min, double max, double value, Action<double> onChanged)
+    /// <summary>A tick slider with a live value readout beside it; applies on release, not every pixel of drag.</summary>
+    private UIElement MakeSlider(double min, double max, double tick, double value, Func<double, string> format, Action<double> onChanged)
     {
         var slider = new Slider
         {
             Minimum = min,
             Maximum = max,
             Value = value,
-            Width = 260,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            Width = 280,
+            TickFrequency = tick,
             IsSnapToTickEnabled = false,
+            HorizontalAlignment = HorizontalAlignment.Left,
         };
-        // Apply on release, not every pixel of drag.
+        var readout = new TextBlock
+        {
+            Text = format(value),
+            FontSize = 13,
+            FontWeight = FontWeights.Bold,
+            Foreground = _t.Text,
+            MinWidth = 56,
+            Margin = new Thickness(14, 0, 0, 8),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        slider.ValueChanged += (_, _) => readout.Text = format(slider.Value);
         slider.LostMouseCapture += (_, _) => onChanged(slider.Value);
-        return slider;
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(slider);
+        row.Children.Add(readout);
+        return row;
     }
 
     private UIElement BuildAppearanceSection()
     {
         var stack = new StackPanel();
 
-        var nameLabel = UiKit.Label(_t, "Your name (for the Home greeting — leave empty for none)", muted: true);
-        var nameInput = UiKit.Input(_t, _settings.UserName, 240);
-        nameInput.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
-        nameInput.Margin = new Thickness(0, 4, 0, 12);
+        stack.Children.Add(FieldLabel("Your name, for the Home greeting (leave empty for none)", 0));
+        var nameInput = UiKit.Input(_t, _settings.UserName, 260);
+        nameInput.HorizontalAlignment = HorizontalAlignment.Left;
         nameInput.LostFocus += (_, _) =>
         {
             _settings.UserName = nameInput.Text.Trim();
             _settings.Save();
         };
-        stack.Children.Add(nameLabel);
         stack.Children.Add(nameInput);
 
-        var themeLabel = UiKit.Label(_t, "Theme", muted: true);
-        themeLabel.Margin = new Thickness(0, 0, 0, 4);
-        stack.Children.Add(themeLabel);
+        stack.Children.Add(FieldLabel("Theme"));
         var theme = UiKit.Combo(_t, ["Dark", "Light"], _settings.Theme);
         theme.SelectionChanged += (_, _) =>
         {
             _settings.Theme = (string)theme.SelectedItem;
             _settings.Save();
-            _app.ReopenMainWindow("Settings"); // applies immediately
+            _app.ApplyAppearance("Settings"); // applies immediately
         };
         stack.Children.Add(theme);
+
+        stack.Children.Add(FieldLabel("Accent"));
+        var accent = UiKit.Combo(_t, ["Gold", "Red"], _settings.Accent);
+        accent.SelectionChanged += (_, _) =>
+        {
+            _settings.Accent = (string)accent.SelectedItem;
+            _settings.Save();
+            _app.ApplyAppearance("Settings");
+        };
+        stack.Children.Add(accent);
+        var accentNote = UiKit.Label(_t, "Red always means \"listening\" while recording, whichever accent you pick.", muted: true);
+        accentNote.FontSize = 13;
+        accentNote.Margin = new Thickness(0, 8, 0, 0);
+        stack.Children.Add(accentNote);
         return stack;
     }
 
     private UIElement BuildResetSection()
     {
         var reset = UiKit.ActionButton(_t, "Reset all settings to defaults");
+        reset.HorizontalAlignment = HorizontalAlignment.Left;
         reset.Click += (_, _) =>
         {
             if (MessageBox.Show(
-                    "Reset hotkey, mode, injection, overlay, theme, and transforms to defaults?\n(Model, microphone, dictionary, and history are kept.)",
+                    "Reset hotkey, mode, injection, overlay, theme, accent and transforms to defaults?\n(Model, microphone, dictionary and history are kept.)",
                     "Bolo", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
                 return;
 
@@ -464,6 +493,7 @@ public sealed class SettingsPage : UserControl
             _settings.OverlayOpacity = defaults.OverlayOpacity;
             _settings.OverlayEdgeMargin = defaults.OverlayEdgeMargin;
             _settings.Theme = defaults.Theme;
+            _settings.Accent = defaults.Accent;
             _settings.RemoveFillerWords = defaults.RemoveFillerWords;
             _settings.ConvertSpokenLists = defaults.ConvertSpokenLists;
             _settings.AutoLearn = defaults.AutoLearn;
@@ -471,7 +501,7 @@ public sealed class SettingsPage : UserControl
 
             try { _app.ApplyHotkeySettings(); } catch { /* old binding stays if default is taken */ }
             _app.RecreateOverlay();
-            _app.ReopenMainWindow("Settings");
+            _app.ApplyAppearance("Settings");
         };
         return reset;
     }

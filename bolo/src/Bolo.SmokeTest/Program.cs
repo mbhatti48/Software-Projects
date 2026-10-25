@@ -6,10 +6,14 @@ using Whisper.net.Logger;
 
 // Bolo smoke tests.
 // Usage: Bolo.SmokeTest <model.bin> <audio.wav> [cpu]   — engine test (Phase 0)
-//        Bolo.SmokeTest selftest                        — learning-layer checks (Phase 2)
+//        Bolo.SmokeTest selftest                        — learning-layer + speech-gate checks
+//        Bolo.SmokeTest vad <ggml-silero.bin> <audio.wav> — VAD check: speech in the clip, none in 2 s of silence (v1.3.0)
 
 if (args.Length == 1 && args[0] == "selftest")
     return RunSelfTest();
+
+if (args.Length == 3 && args[0] == "vad")
+    return await RunVadCheck(args[1], args[2]);
 
 if (args.Length < 2)
 {
@@ -69,8 +73,39 @@ static int RunSelfTest()
     Check("replace with $0 pattern",
         SubstitutionEngine.Replace("send my rate", "my rate", "$0.50/word") == "send $0.50/word");
 
+    // Speech gate on top of the VAD (v1.3.0): the decision rule, pure and pinned.
+    Check("speech seconds sums segments",
+        Math.Abs(Bolo.Core.Engine.SpeechGate.SpeechSeconds([(TimeSpan.Zero, TimeSpan.FromSeconds(0.5)), (TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1.4))]) - 0.9) < 1e-9);
+    Check("speech gate passes without a VAD", Bolo.Core.Engine.SpeechGate.HasSpeech(null));
+    Check("speech gate rejects a silent take", !Bolo.Core.Engine.SpeechGate.HasSpeech(0.1));
+    Check("speech gate accepts a short word", Bolo.Core.Engine.SpeechGate.HasSpeech(0.3));
+
     Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
     return failures == 0 ? 0 : 1;
+}
+
+static async Task<int> RunVadCheck(string vadModel, string wavPath)
+{
+    using var engine = new Bolo.Core.Engine.WhisperTranscriber();
+    engine.LoadVad(vadModel);
+    using var clip = File.OpenRead(wavPath);
+    var speech = await engine.DetectSpeechSecondsAsync(clip);
+    var clipSeconds = (new FileInfo(wavPath).Length - 44.0) / 32000;
+    Console.WriteLine($"clip: {clipSeconds:F1} s audio, {speech:F2} s speech -> {(Bolo.Core.Engine.SpeechGate.HasSpeech(speech) ? "speech" : "no speech")}");
+    // Two seconds of digital silence as a 16 kHz mono 16-bit WAV, built in memory.
+    var silence = new MemoryStream();
+    using (var w = new BinaryWriter(silence, System.Text.Encoding.ASCII, leaveOpen: true))
+    {
+        var data = 16000 * 2 * 2;
+        w.Write("RIFF"u8); w.Write(36 + data); w.Write("WAVE"u8); w.Write("fmt "u8); w.Write(16); w.Write((short)1); w.Write((short)1);
+        w.Write(16000); w.Write(32000); w.Write((short)2); w.Write((short)16); w.Write("data"u8); w.Write(data); w.Write(new byte[data]);
+    }
+    silence.Position = 0;
+    var silent = await engine.DetectSpeechSecondsAsync(silence);
+    Console.WriteLine($"silence: 2.0 s audio, {silent:F2} s speech -> {(Bolo.Core.Engine.SpeechGate.HasSpeech(silent) ? "speech" : "no speech")}");
+    var ok = Bolo.Core.Engine.SpeechGate.HasSpeech(speech) && !Bolo.Core.Engine.SpeechGate.HasSpeech(silent);
+    Console.WriteLine(ok ? "VAD PASS" : "VAD FAIL");
+    return ok ? 0 : 1;
 }
 
 var modelPath = args[0];

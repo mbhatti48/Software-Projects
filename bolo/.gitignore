@@ -1,0 +1,22 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+publish/
+Bolo/                # self-contained publish output (see publish.ps1)
+
+# Speech models — downloaded once via download-model.ps1, never committed (~1.6 GB)
+models/
+*.bin
+
+# User data lives in %APPDATA%\Bolo on each machine — never in the repo
+# (settings.json, vocabulary.json, corrections.json, snippets.json, history/, bolo.log)
+
+# Local test audio (supply your own when running Bolo.SmokeTest)
+*.wav
+
+# IDE / OS
+.vs/
+*.user
+*.suo
+.DS_Store
+Thumbs.db

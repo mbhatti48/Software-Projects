@@ -15,6 +15,11 @@ if (-not $target) { $target = $PSScriptRoot }
 $modelsDir = Join-Path $target 'models'
 New-Item -ItemType Directory -Force $modelsDir | Out-Null
 $dest = Join-Path $modelsDir $model
+# Since v1.3.0 Bolo also wants the small Silero voice-activity model beside it (about 1 MB).
+$vadModel = "ggml-silero-v6.2.0.bin"
+$vadUrl = "https://huggingface.co/sandrohanea/whisper.net/resolve/v5/vad/$vadModel"
+$vadDest = Join-Path $modelsDir $vadModel
+if (-not (Test-Path $vadDest)) { Invoke-WebRequest -Uri $vadUrl -OutFile $vadDest; Write-Host "Voice-activity model saved to $vadDest" }
 
 if (Test-Path $dest) {
     Write-Host "Model already present: $dest"

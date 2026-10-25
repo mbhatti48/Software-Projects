@@ -1,13 +1,13 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
+using Bolo.App.Ui;
+using Bolo.Core.Storage;
 
 namespace Bolo.App;
 
 /// <summary>
-/// Edit the last transcript; differences are harvested as correction pairs so Bolo
-/// stops making the same mistake. (The full History page in Phase 3 supersedes this
-/// as the main correction entry point.)
+/// Edit a transcript; differences are harvested as correction pairs so Bolo stops
+/// making the same mistake. Used by the History page and the tray's "Fix last transcript".
 /// </summary>
 public sealed class FixTranscriptWindow : Window
 {
@@ -15,54 +15,46 @@ public sealed class FixTranscriptWindow : Window
 
     public string EditedText => _editor.Text;
 
-    public FixTranscriptWindow(string originalText)
+    public FixTranscriptWindow(string originalText, AppSettings settings)
     {
-        var settings = Bolo.Core.Storage.AppSettings.Load();
-        var theme = Ui.Theme.FromName(settings.Theme);
-        Ui.ModernStyles.Apply(this, theme);
-        Ui.ModernStyles.ApplyTitleBar(this, dark: settings.Theme != "Light");
-        Title = "Bolo — Fix last transcript";
-        Width = 560;
-        Height = 320;
+        var theme = Theme.FromName(settings.Theme, settings.Accent);
+        ModernStyles.Apply(this, theme);
+        ModernStyles.ApplyTitleBar(this, theme);
+        Title = "Bolo";
+        Width = 600;
+        Height = 380;
+        MinWidth = 440;
+        MinHeight = 300;
+        FontFamily = Theme.BodyFont;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        Background = new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x24));
+        Background = theme.WindowBg;
 
-        _editor = new TextBox
-        {
-            Text = originalText,
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 14,
-            Margin = new Thickness(12),
-            Padding = new Thickness(8),
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        };
+        var header = UiKit.PageHeader(theme, "Fix the transcript",
+            "Correct anything Bolo misheard, then save. It learns the corrections and applies them automatically next time.");
+        header.Margin = new Thickness(0, 0, 0, 16);
 
-        var hint = new TextBlock
-        {
-            Text = "Fix anything Bolo misheard, then save — it learns the corrections and applies them automatically next time.",
-            Foreground = Brushes.Gray,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(12, 0, 12, 0),
-        };
+        _editor = UiKit.Input(theme, originalText);
+        _editor.AcceptsReturn = true;
+        _editor.TextWrapping = TextWrapping.Wrap;
+        _editor.VerticalContentAlignment = VerticalAlignment.Top;
+        _editor.Padding = new Thickness(12);
+        _editor.FontSize = 14;
+        _editor.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
 
-        var save = new Button { Content = "Save & learn", IsDefault = true, Padding = new Thickness(16, 6, 16, 6), Margin = new Thickness(0, 0, 8, 0) };
-        var cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(16, 6, 16, 6) };
+        var save = UiKit.ActionButton(theme, "Save & learn", primary: true);
+        save.IsDefault = true;
+        var cancel = UiKit.ActionButton(theme, "Cancel");
+        cancel.IsCancel = true;
         save.Click += (_, _) => { DialogResult = true; Close(); };
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
-            Margin = new Thickness(12),
-        };
-        buttons.Children.Add(save);
-        buttons.Children.Add(cancel);
+        var buttons = UiKit.Row(cancel, save);
+        buttons.HorizontalAlignment = HorizontalAlignment.Right;
+        buttons.Margin = new Thickness(0, 14, 0, 0);
 
-        var root = new DockPanel();
-        DockPanel.SetDock(hint, Dock.Top);
+        var root = new DockPanel { Margin = new Thickness(28, 26, 28, 24) };
+        DockPanel.SetDock(header, Dock.Top);
         DockPanel.SetDock(buttons, Dock.Bottom);
-        root.Children.Add(hint);
+        root.Children.Add(header);
         root.Children.Add(buttons);
         root.Children.Add(_editor);
         Content = root;

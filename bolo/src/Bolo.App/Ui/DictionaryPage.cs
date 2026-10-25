@@ -16,34 +16,25 @@ public sealed class DictionaryPage : UserControl
         _theme = t;
         _controller = controller;
 
-        var panel = new DockPanel();
-        var title = UiKit.Title(t, "Dictionary");
-        DockPanel.SetDock(title, Dock.Top);
-
-        var hint = UiKit.Label(t,
-            "Words, names, and jargon Bolo should recognize — grouped into clusters you can switch on and off. Changes apply to the next dictation.",
-            muted: true);
-        hint.Margin = new Thickness(0, 0, 0, 12);
-        DockPanel.SetDock(hint, Dock.Top);
-
-        var addCluster = UiKit.ActionButton(t, "+ New cluster");
+        var addCluster = UiKit.ActionButton(t, "New cluster", primary: true);
         addCluster.Click += (_, _) =>
         {
             _controller.Vocabulary.Clusters.Add(new VocabCluster { Name = "New cluster" });
             SaveQuiet();
             Refresh();
         };
-        DockPanel.SetDock(addCluster, Dock.Bottom);
-        addCluster.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
-        addCluster.Margin = new Thickness(0, 10, 0, 0);
 
-        panel.Children.Add(title);
-        panel.Children.Add(hint);
-        panel.Children.Add(addCluster);
+        var panel = new DockPanel();
+        var header = UiKit.PageHeader(t, "Dictionary",
+            "Names, jargon and terms Bolo should hear correctly, grouped into clusters you can switch on and off. Changes apply to the next dictation.",
+            addCluster);
+        DockPanel.SetDock(header, Dock.Top);
+        panel.Children.Add(header);
         panel.Children.Add(new ScrollViewer
         {
             Content = _clusterList,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Padding = new Thickness(0, 0, 8, 24),
         });
         Content = panel;
         Refresh();
@@ -52,29 +43,34 @@ public sealed class DictionaryPage : UserControl
     private void Refresh()
     {
         _clusterList.Children.Clear();
+        if (_controller.Vocabulary.Clusters.Count == 0)
+        {
+            _clusterList.Children.Add(UiKit.Empty(_theme,
+                "No clusters yet. Make one for each world you dictate in (work, technical, family) and drop the names and terms in."));
+            return;
+        }
         foreach (var cluster in _controller.Vocabulary.Clusters)
             _clusterList.Children.Add(ClusterCard(cluster));
     }
 
     private UIElement ClusterCard(VocabCluster cluster)
     {
-        // Header: name (left) · count · enabled · delete (right), one aligned line.
-        var name = UiKit.Input(_theme, cluster.Name, 170);
-        name.FontWeight = FontWeights.SemiBold;
-        name.FontSize = 14;
-        name.VerticalAlignment = VerticalAlignment.Center;
+        // Header: name (left) · count · enabled switch · delete (right), one aligned line.
+        var name = UiKit.Input(_theme, cluster.Name, 200);
+        name.FontWeight = FontWeights.Bold;
+        name.FontSize = 15;
+        name.Background = System.Windows.Media.Brushes.Transparent;
+        name.BorderBrush = System.Windows.Media.Brushes.Transparent;
+        name.Padding = new Thickness(4, 4, 8, 4);
+        name.ToolTip = "Click to rename";
         name.LostFocus += (_, _) => { cluster.Name = name.Text; _controller.Vocabulary.Save(); };
 
         var count = UiKit.Label(_theme, TermCountText(cluster), muted: true);
-        count.VerticalAlignment = VerticalAlignment.Center;
+        count.FontSize = 12;
+        count.Foreground = _theme.TextFaint;
 
-        var enabled = new CheckBox
-        {
-            IsChecked = cluster.Enabled,
-            Content = "enabled",
-            Foreground = _theme.TextMuted,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
+        var enabled = new CheckBox { IsChecked = cluster.Enabled, Content = "", VerticalAlignment = VerticalAlignment.Center, ToolTip = "Enabled clusters bias what Bolo hears" };
+        enabled.SetResourceReference(StyleProperty, "Switch");
         enabled.Checked += (_, _) => { cluster.Enabled = true; SaveQuiet(); };
         enabled.Unchecked += (_, _) => { cluster.Enabled = false; SaveQuiet(); };
 
@@ -92,33 +88,25 @@ public sealed class DictionaryPage : UserControl
         };
 
         var headerRight = UiKit.Row(count, enabled, remove);
-        headerRight.VerticalAlignment = VerticalAlignment.Center;
         DockPanel.SetDock(headerRight, Dock.Right);
         var header = new DockPanel();
         header.Children.Add(headerRight);
         header.Children.Add(name);
 
-        // Thin divider separates the header from the term chips.
-        var divider = new Border
-        {
-            Height = 1,
-            Background = _theme.CardBorder,
-            Margin = new Thickness(0, 12, 0, 0),
-        };
-
-        // Terms as removable chips, wrapping neatly.
+        // Terms as removable chips, wrapping neatly; the add box lives at the end of the flow.
         var chips = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
 
-        // Add-term box lives at the end of the chip flow, with a visible hint.
-        var addBox = UiKit.Input(_theme, "", 120);
+        var addBox = UiKit.Input(_theme, "", 130);
         addBox.Background = System.Windows.Media.Brushes.Transparent;
-        addBox.VerticalAlignment = VerticalAlignment.Center;
+        addBox.BorderBrush = _theme.Line2;
+        addBox.Padding = new Thickness(10, 4, 10, 4);
+        addBox.FontSize = 13;
         addBox.ToolTip = "Type a term and press Enter";
 
         var addHint = UiKit.Label(_theme, "+ add term", muted: true);
+        addHint.FontSize = 13;
         addHint.Margin = new Thickness(11, 0, 0, 0);
         addHint.IsHitTestVisible = false;
-        addHint.VerticalAlignment = VerticalAlignment.Center;
         addBox.TextChanged += (_, _) =>
             addHint.Visibility = addBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -172,7 +160,7 @@ public sealed class DictionaryPage : UserControl
 
         var stack = new StackPanel();
         stack.Children.Add(header);
-        stack.Children.Add(divider);
+        stack.Children.Add(UiKit.Divider(_theme));
         stack.Children.Add(chips);
         return UiKit.Card(_theme, stack);
     }
@@ -185,6 +173,7 @@ public sealed class DictionaryPage : UserControl
             Text = term,
             Foreground = _theme.Text,
             FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
         };
         var removeButton = new Button
@@ -193,7 +182,8 @@ public sealed class DictionaryPage : UserControl
             FontSize = 9,
             Foreground = _theme.TextMuted,
             Background = System.Windows.Media.Brushes.Transparent,
-            Padding = new Thickness(4, 2, 4, 2),
+            BorderBrush = System.Windows.Media.Brushes.Transparent,
+            Padding = new Thickness(5, 2, 5, 2),
             Margin = new Thickness(6, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Cursor = Cursors.Hand,
@@ -207,11 +197,11 @@ public sealed class DictionaryPage : UserControl
 
         return new Border
         {
-            Background = _theme.InputBg,
+            Background = _theme.RaiseBg,
             BorderBrush = _theme.CardBorder,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(999),
-            Padding = new Thickness(11, 5, 7, 5),
+            Padding = new Thickness(12, 4, 6, 4),
             Margin = new Thickness(0, 0, 8, 8),
             Child = content,
         };

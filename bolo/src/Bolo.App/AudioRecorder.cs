@@ -32,12 +32,22 @@ public sealed class AudioRecorder : IDisposable
         IsRecording = true;
     }
 
+    /// <summary>Peak input level of the latest buffer, 0..1, for the overlay's level bars.</summary>
+    public float Level { get; private set; }
+
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
         lock (_gate)
         {
             _pcm?.Write(e.Buffer, 0, e.BytesRecorded);
         }
+        var peak = 0;
+        for (var i = 0; i + 1 < e.BytesRecorded; i += 2)
+        {
+            var sample = Math.Abs((int)BitConverter.ToInt16(e.Buffer, i));
+            if (sample > peak) peak = sample;
+        }
+        Level = peak / 32768f;
     }
 
     public double BufferedSeconds

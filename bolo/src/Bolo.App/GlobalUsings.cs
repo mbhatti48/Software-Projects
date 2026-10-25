@@ -17,3 +17,6 @@ global using Cursors = System.Windows.Input.Cursors;
 global using Clipboard = System.Windows.Clipboard;
 global using MessageBox = System.Windows.MessageBox;
 global using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
+global using FontFamily = System.Windows.Media.FontFamily;
+global using HorizontalAlignment = System.Windows.HorizontalAlignment;
+global using Image = System.Windows.Controls.Image;
