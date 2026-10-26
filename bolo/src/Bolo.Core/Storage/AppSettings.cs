@@ -28,6 +28,27 @@ public sealed class AppSettings
     public bool ForceCpu { get; set; } = false;
     /// <summary>NAudio input device index; -1 = Windows default microphone.</summary>
     public int MicDeviceIndex { get; set; } = -1;
+    /// <summary>
+    /// The chosen input's name (v1.3.2); empty = System default, or a pre-1.3.2 file that only has the index.
+    /// Windows renumbers inputs when the default device changes, so the name is what identifies the mic.
+    /// </summary>
+    public string MicDeviceName { get; set; } = "";
+
+    /// <summary>
+    /// The device index to record from today: the saved name's current position, the
+    /// System default (-1) when that mic is gone, or the old index when no name was saved.
+    /// </summary>
+    public static int ResolveMic(string savedName, int savedIndex, IReadOnlyList<string> deviceNames)
+    {
+        if (!string.IsNullOrEmpty(savedName))
+        {
+            for (var i = 0; i < deviceNames.Count; i++)
+                if (deviceNames[i] == savedName)
+                    return i;
+            return -1;
+        }
+        return savedIndex >= 0 && savedIndex < deviceNames.Count ? savedIndex : -1;
+    }
     /// <summary>Spelled-out acronym collapse + "add to dictionary" voice command.</summary>
     public bool AutoLearn { get; set; } = true;
     public string Hotkey { get; set; } = "F9";

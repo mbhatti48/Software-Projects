@@ -90,5 +90,6 @@ Nothing else is left behind. Bolo does not touch the registry or install service
 - **Hotkey does nothing.** Another app may own that combination. Pick a different one in Settings; the hotkey box tells you if binding fails.
 - **Transcription is slow.** Check Settings to confirm the engine says Vulkan. If it says CPU, switch to a smaller model, or update your graphics drivers and restart Bolo.
 - **Text lands in the wrong place.** The text goes to whatever window has focus when transcription finishes. Click into your target field before or while speaking.
-- **Wrong microphone.** Change it in Settings under Microphone.
+- **Wrong microphone.** Change it in Settings under Microphone. The bar under the picker moves while you speak; if it stays flat, Bolo hears nothing from that mic.
+- **You speak and nothing is typed.** The pill says why ("Didn't catch that"). If it says the mic is muted in Windows, unmute it in Windows Settings > System > Sound > Input; a muted mic records only silence.
 - **Diagnostics.** A log of app events (no transcript content beyond lengths) is written to `%APPDATA%\Bolo\bolo.log`.

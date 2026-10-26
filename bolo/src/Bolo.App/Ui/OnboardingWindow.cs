@@ -64,16 +64,11 @@ public sealed class OnboardingWindow : Window
         var micStack = new StackPanel();
         micStack.Children.Add(UiKit.Section(_t, "02  Microphone"));
         var devices = new List<string> { "System default" };
-        for (var i = 0; i < WaveInEvent.DeviceCount; i++)
-            devices.Add(WaveInEvent.GetCapabilities(i).ProductName);
+        devices.AddRange(MicInfo.DeviceNames());
         var deviceCombo = UiKit.Combo(_t, devices,
-            devices[Math.Clamp(settings.MicDeviceIndex + 1, 0, devices.Count - 1)]);
+            devices[Math.Clamp(MicInfo.Resolve(settings) + 1, 0, devices.Count - 1)]);
         deviceCombo.MinWidth = 320;
-        deviceCombo.SelectionChanged += (_, _) =>
-        {
-            settings.MicDeviceIndex = deviceCombo.SelectedIndex - 1;
-            settings.Save();
-        };
+        deviceCombo.SelectionChanged += (_, _) => MicInfo.Choose(settings, devices, deviceCombo.SelectedIndex);
         micStack.Children.Add(deviceCombo);
 
         var micButton = UiKit.ActionButton(_t, "Test the microphone for 2 seconds");
@@ -188,7 +183,7 @@ public sealed class OnboardingWindow : Window
         using var waveIn = new WaveInEvent
         {
             WaveFormat = new WaveFormat(16000, 16, 1),
-            DeviceNumber = _settings.MicDeviceIndex,
+            DeviceNumber = MicInfo.Resolve(_settings),
         };
         waveIn.DataAvailable += (_, e) =>
         {

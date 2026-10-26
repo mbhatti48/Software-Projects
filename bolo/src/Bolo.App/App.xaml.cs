@@ -66,6 +66,18 @@ public partial class App : Application
         _settings = AppSettings.Load();
         BoloLog.Write($"settings loaded: onboardingDone={_settings.OnboardingDone}, " +
             $"settingsFileExists={File.Exists(BoloPaths.SettingsFile)}, loadFailed={_settings.LoadFailed}");
+        // A pre-1.3.2 file holds only the mic's position, which Windows renumbers when the
+        // default input changes: pin it once to the name that position means today.
+        if (_settings.MicDeviceName == "" && _settings.MicDeviceIndex >= 0)
+        {
+            var micNames = MicInfo.DeviceNames();
+            if (_settings.MicDeviceIndex < micNames.Count)
+            {
+                _settings.MicDeviceName = micNames[_settings.MicDeviceIndex];
+                _settings.Save();
+            }
+        }
+        BoloLog.Write($"mic: {(_settings.MicDeviceName == "" ? "System default" : _settings.MicDeviceName)} (index now {MicInfo.Resolve(_settings)})");
         if (string.IsNullOrEmpty(_settings.ModelPath) || !File.Exists(_settings.ModelPath))
         {
             // Look for a model next to the exe (distributed layout) first, then the
@@ -126,6 +138,8 @@ public partial class App : Application
             BoloLog.Write($"ERROR: {message}");
             _tray.ShowBalloon("Bolo error", message, System.Windows.Forms.ToolTipIcon.Error);
         });
+        _controller.TakeDropped += reason => Dispatcher.Invoke(() =>
+            _overlay.ShowNotice(reason));
         _controller.Notice += message => Dispatcher.Invoke(() =>
             _tray.ShowBalloon("Bolo", message));
 

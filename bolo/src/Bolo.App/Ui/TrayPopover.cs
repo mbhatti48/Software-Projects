@@ -94,7 +94,10 @@ public sealed class TrayPopover : Window
         card.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 24, ShadowDepth = 6, Opacity = 0.45, Color = Colors.Black };
         Content = card;
 
-        Deactivated += (_, _) => Close();
+        // Closing the active popover deactivates it; a second Close() on a closing window throws and ends the app.
+        var closing = false;
+        Closing += (_, _) => closing = true;
+        Deactivated += (_, _) => { if (!closing) Close(); };
         KeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) Close(); };
         SizeChanged += (_, _) =>
         {

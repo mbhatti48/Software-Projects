@@ -36,6 +36,8 @@ public sealed class DictationController : IDisposable
     /// <summary>Informational messages worth surfacing (auto-learned words, commands).</summary>
     public event Action<string>? Notice;
     public event Action<string>? Error;
+    /// <summary>A take produced no text (silence, a muted mic): the reason, for the pill (v1.3.1).</summary>
+    public event Action<string>? TakeDropped;
 
     private CancellationTokenSource? _partialCts;
 
@@ -139,7 +141,7 @@ public sealed class DictationController : IDisposable
             return;
         try
         {
-            _recorder.DeviceIndex = _settings.MicDeviceIndex;
+            _recorder.DeviceIndex = MicInfo.Resolve(_settings);
             _recorder.Start();
             BoloLog.Write("prewarm: capture started");
         }
@@ -171,7 +173,7 @@ public sealed class DictationController : IDisposable
         {
             if (!_recorder.IsRecording) // not prewarmed (button/tray/registered-hotkey path)
             {
-                _recorder.DeviceIndex = _settings.MicDeviceIndex;
+                _recorder.DeviceIndex = MicInfo.Resolve(_settings);
                 _recorder.Start();
             }
             SetState(DictationState.Recording);
@@ -277,7 +279,10 @@ public sealed class DictationController : IDisposable
             var speechSeconds = await _transcriber.DetectSpeechSecondsAsync(wav);
             if (!SpeechGate.HasSpeech(speechSeconds))
             {
-                BoloLog.Write($"no speech detected ({audioSeconds:F1}s audio, {speechSeconds:F2}s speech): take discarded");
+                var muted = MicInfo.IsMuted(_recorder.DeviceIndex);
+                var mic = MicInfo.Name(_recorder.DeviceIndex);
+                BoloLog.Write($"no speech detected ({audioSeconds:F1}s audio, {speechSeconds:F2}s speech, peak {_recorder.TakePeak:P1}, mic={mic}, muted={muted}): take discarded");
+                TakeDropped?.Invoke(SpeechGate.DroppedReason(mic, muted, _recorder.TakePeak));
                 return;
             }
             var timer = Stopwatch.StartNew();
@@ -305,6 +310,12 @@ public sealed class DictationController : IDisposable
                     timer.Elapsed.TotalSeconds, _transcriber.LoadedRuntime,
                     ForegroundApp.GetName()));
                 TranscriptReady?.Invoke(text);
+            }
+            else
+            {
+                BoloLog.Write($"empty transcript ({audioSeconds:F1}s audio, peak {_recorder.TakePeak:P1}): nothing typed");
+                TakeDropped?.Invoke(SpeechGate.DroppedReason(MicInfo.Name(_recorder.DeviceIndex),
+                    MicInfo.IsMuted(_recorder.DeviceIndex), _recorder.TakePeak));
             }
         }
         catch (Exception ex)

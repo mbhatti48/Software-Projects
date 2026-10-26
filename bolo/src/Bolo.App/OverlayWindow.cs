@@ -48,6 +48,7 @@ public sealed class OverlayWindow : Window
     private readonly AppSettings _settings;
     private readonly Func<float> _level;
     private readonly DispatcherTimer _meter;
+    private readonly DispatcherTimer _noticeTimer;
     private readonly TranslateTransform _rise = new(0, 0);
     private bool _hiding;
 
@@ -121,6 +122,12 @@ public sealed class OverlayWindow : Window
 
         _meter = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(50) };
         _meter.Tick += (_, _) => TickMeter();
+        _noticeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _noticeTimer.Tick += (_, _) =>
+        {
+            _noticeTimer.Stop();
+            HideOverlay();
+        };
 
         SourceInitialized += (_, _) =>
         {
@@ -165,6 +172,7 @@ public sealed class OverlayWindow : Window
 
     public void ShowRecording()
     {
+        _noticeTimer.Stop();
         _hiding = false;
         _dot.Fill = RecordingBrush;
         _status.Text = "LISTENING";
@@ -196,8 +204,33 @@ public sealed class OverlayWindow : Window
         SetGlow(BusyColor, 0.3);
     }
 
+    /// <summary>A take produced no text: say why for three seconds instead of vanishing (v1.3.1).</summary>
+    public void ShowNotice(string reason)
+    {
+        _meter.Stop();
+        _dot.BeginAnimation(OpacityProperty, null);
+        _dot.Opacity = 1;
+        _dot.Fill = BusyBrush;
+        _status.Text = "DIDN'T CATCH THAT";
+        _ghost.Text = reason;
+        foreach (var bar in _bars)
+            bar.Height = 3;
+        SetGlow(BusyColor, 0.3);
+        if (!IsVisible || _hiding)
+        {
+            _hiding = false;
+            AnimateIn();
+            Show();
+        }
+        Reposition();
+        _noticeTimer.Stop();
+        _noticeTimer.Start();
+    }
+
     public void HideOverlay()
     {
+        if (_noticeTimer.IsEnabled)
+            return; // the notice hides itself when its time is up
         _dot.BeginAnimation(OpacityProperty, null);
         _meter.Stop();
         if (!IsVisible || !SystemParameters.ClientAreaAnimation)

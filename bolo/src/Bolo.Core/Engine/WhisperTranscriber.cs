@@ -176,4 +176,16 @@ public static class SpeechGate
 
     public static bool HasSpeech(double? detectedSpeechSeconds) =>
         detectedSpeechSeconds is null || detectedSpeechSeconds.Value >= MinSpeechSeconds;
+
+    /// <summary>A take whose loudest sample stays under this peak (about -54 dBFS) heard nothing at all.</summary>
+    public const double SilentPeak = 0.002;
+
+    /// <summary>
+    /// Why a take produced no text, for the pill (v1.3.1), likeliest cause first: a mic muted
+    /// in Windows still records, just silence, and a dead or wrong input reads near zero.
+    /// </summary>
+    public static string DroppedReason(string mic, bool muted, double peak) =>
+        muted ? $"{mic} is muted in Windows"
+        : peak < SilentPeak ? $"No sound from {mic}"
+        : "No speech detected";
 }

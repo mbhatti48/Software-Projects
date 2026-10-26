@@ -7,7 +7,7 @@ using Whisper.net.Logger;
 // Bolo smoke tests.
 // Usage: Bolo.SmokeTest <model.bin> <audio.wav> [cpu]   — engine test (Phase 0)
 //        Bolo.SmokeTest selftest                        — learning-layer + speech-gate checks
-//        Bolo.SmokeTest vad <ggml-silero.bin> <audio.wav> — VAD check: speech in the clip, none in 2 s of silence (v1.3.0)
+//        Bolo.SmokeTest vad <ggml-silero.bin> <audio.wav> — VAD check: speech in the clip, none in 2 s of silence (v1.3.0), speech in the clip at 1% gain (v1.3.1)
 
 if (args.Length == 1 && args[0] == "selftest")
     return RunSelfTest();
@@ -80,6 +80,24 @@ static int RunSelfTest()
     Check("speech gate rejects a silent take", !Bolo.Core.Engine.SpeechGate.HasSpeech(0.1));
     Check("speech gate accepts a short word", Bolo.Core.Engine.SpeechGate.HasSpeech(0.3));
 
+    // Why a take was dropped (v1.3.1): a muted mic first, then a silent input, then plain no speech.
+    Check("dropped: muted mic named",
+        Bolo.Core.Engine.SpeechGate.DroppedReason("Brio 101", muted: true, peak: 0.0003) == "Brio 101 is muted in Windows");
+    Check("dropped: silent input",
+        Bolo.Core.Engine.SpeechGate.DroppedReason("Brio 101", muted: false, peak: 0.0003) == "No sound from Brio 101");
+    Check("dropped: sound but no speech",
+        Bolo.Core.Engine.SpeechGate.DroppedReason("Brio 101", muted: false, peak: 0.05) == "No speech detected");
+
+    // The mic follows its name when Windows renumbers inputs (v1.3.2): making the Brio the
+    // default moved it from 2 to 0, and the saved index 2 then meant the Arctis headset.
+    string[] before = ["SteelSeries Sonar - Microphone", "Microphone (Arctis Nova 7X)", "Microphone (Brio 101)"];
+    string[] after = ["Microphone (Brio 101)", "SteelSeries Sonar - Microphone", "Microphone (Arctis Nova 7X)"];
+    Check("mic by name before the reorder", Bolo.Core.Storage.AppSettings.ResolveMic("Microphone (Brio 101)", 2, before) == 2);
+    Check("mic by name after the reorder", Bolo.Core.Storage.AppSettings.ResolveMic("Microphone (Brio 101)", 2, after) == 0);
+    Check("unplugged mic falls back to the default", Bolo.Core.Storage.AppSettings.ResolveMic("Microphone (Brio 101)", 2, after[1..]) == -1);
+    Check("old settings without a name keep the index", Bolo.Core.Storage.AppSettings.ResolveMic("", 1, after) == 1);
+    Check("out-of-range index falls back to the default", Bolo.Core.Storage.AppSettings.ResolveMic("", 5, after) == -1);
+
     Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
     return failures == 0 ? 0 : 1;
 }
@@ -103,7 +121,22 @@ static async Task<int> RunVadCheck(string vadModel, string wavPath)
     silence.Position = 0;
     var silent = await engine.DetectSpeechSecondsAsync(silence);
     Console.WriteLine($"silence: 2.0 s audio, {silent:F2} s speech -> {(Bolo.Core.Engine.SpeechGate.HasSpeech(silent) ? "speech" : "no speech")}");
-    var ok = Bolo.Core.Engine.SpeechGate.HasSpeech(speech) && !Bolo.Core.Engine.SpeechGate.HasSpeech(silent);
+    // A quiet mic (v1.3.1): the first 2.2 s of the clip turned down to 1% must still count as speech.
+    var clipBytes = File.ReadAllBytes(wavPath);
+    var quietLength = Math.Min(clipBytes.Length - 44, 16000 * 2 * 22 / 10);
+    var quiet = new MemoryStream();
+    using (var w = new BinaryWriter(quiet, System.Text.Encoding.ASCII, leaveOpen: true))
+    {
+        w.Write("RIFF"u8); w.Write(36 + quietLength); w.Write("WAVE"u8); w.Write("fmt "u8); w.Write(16); w.Write((short)1); w.Write((short)1);
+        w.Write(16000); w.Write(32000); w.Write((short)2); w.Write((short)16); w.Write("data"u8); w.Write(quietLength);
+        for (var i = 0; i < quietLength; i += 2)
+            w.Write((short)(BitConverter.ToInt16(clipBytes, 44 + i) / 100));
+    }
+    quiet.Position = 0;
+    var quietSpeech = await engine.DetectSpeechSecondsAsync(quiet);
+    Console.WriteLine($"quiet: 2.2 s at 1% gain, {quietSpeech:F2} s speech -> {(Bolo.Core.Engine.SpeechGate.HasSpeech(quietSpeech) ? "speech" : "no speech")}");
+    var ok = Bolo.Core.Engine.SpeechGate.HasSpeech(speech) && !Bolo.Core.Engine.SpeechGate.HasSpeech(silent)
+        && Bolo.Core.Engine.SpeechGate.HasSpeech(quietSpeech);
     Console.WriteLine(ok ? "VAD PASS" : "VAD FAIL");
     return ok ? 0 : 1;
 }

@@ -26,6 +26,7 @@ public sealed class AudioRecorder : IDisposable
         if (IsRecording)
             return;
         _pcm = new MemoryStream();
+        TakePeak = 0;
         _waveIn = new WaveInEvent { WaveFormat = Format, DeviceNumber = DeviceIndex };
         _waveIn.DataAvailable += OnDataAvailable;
         _waveIn.StartRecording();
@@ -48,7 +49,11 @@ public sealed class AudioRecorder : IDisposable
             if (sample > peak) peak = sample;
         }
         Level = peak / 32768f;
+        if (Level > TakePeak) TakePeak = Level;
     }
+
+    /// <summary>Loudest level of the current or last take, 0..1 (says whether the mic heard anything).</summary>
+    public float TakePeak { get; private set; }
 
     public double BufferedSeconds
     {

@@ -274,23 +274,91 @@ public sealed class SettingsPage : UserControl
     private UIElement BuildMicSection()
     {
         var devices = new List<string> { "System default" };
-        for (var i = 0; i < NAudio.Wave.WaveInEvent.DeviceCount; i++)
-            devices.Add(NAudio.Wave.WaveInEvent.GetCapabilities(i).ProductName);
+        devices.AddRange(MicInfo.DeviceNames());
 
-        var selectedIndex = Math.Clamp(_settings.MicDeviceIndex + 1, 0, devices.Count - 1);
+        var selectedIndex = Math.Clamp(MicInfo.Resolve(_settings) + 1, 0, devices.Count - 1);
         var combo = UiKit.Combo(_t, devices, devices[selectedIndex]);
         combo.MinWidth = 320;
-        combo.SelectionChanged += (_, _) =>
-        {
-            _settings.MicDeviceIndex = combo.SelectedIndex - 1; // "System default" = -1
-            _settings.Save();
-        };
         var note = UiKit.Label(_t, "Takes effect on the next dictation.", muted: true);
         note.FontSize = 13;
         note.Margin = new Thickness(0, 8, 0, 0);
+
+        // Live input level for the chosen mic (v1.3.1): proof it is heard before a take is lost.
+        var fill = new Border { Background = _t.Accent, CornerRadius = new CornerRadius(3), Width = 0, HorizontalAlignment = HorizontalAlignment.Left };
+        var track = new Border { Background = _t.RaiseBg, CornerRadius = new CornerRadius(3), Height = 6, Width = 320, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 12, 0, 0), Child = fill };
+        var meterNote = UiKit.Label(_t, "Speak and the bar should move.", muted: true);
+        meterNote.FontSize = 13;
+        meterNote.Margin = new Thickness(0, 6, 0, 0);
+
+        NAudio.Wave.WaveInEvent? monitor = null;
+        var meterDevice = -1;
+        float peak = 0;
+        double shown = 0;
+        var ticks = 0;
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        timer.Tick += (_, _) =>
+        {
+            var target = Math.Sqrt(Math.Clamp(peak, 0f, 1f)); // quiet speech still moves the bar
+            peak = 0;
+            shown = target > shown ? target : shown * 0.85;
+            fill.Width = 320 * shown;
+            if (ticks++ % 20 == 0) // the mute switch, about once a second
+            {
+                var muted = MicInfo.IsMuted(meterDevice);
+                meterNote.Text = muted
+                    ? $"{MicInfo.Name(meterDevice)} is muted in Windows, so Bolo hears silence. Unmute it in Windows Settings > System > Sound > Input."
+                    : "Speak and the bar should move.";
+                meterNote.Foreground = muted ? _t.Recording : _t.TextMuted;
+            }
+        };
+        void StopMonitor()
+        {
+            timer.Stop();
+            monitor?.Dispose();
+            monitor = null;
+            fill.Width = shown = 0;
+        }
+        void StartMonitor()
+        {
+            StopMonitor();
+            try
+            {
+                meterDevice = MicInfo.Resolve(_settings);
+                monitor = new NAudio.Wave.WaveInEvent { WaveFormat = new NAudio.Wave.WaveFormat(16000, 16, 1), DeviceNumber = meterDevice };
+                monitor.DataAvailable += (_, e) =>
+                {
+                    var max = 0;
+                    for (var i = 0; i + 1 < e.BytesRecorded; i += 2)
+                        max = Math.Max(max, Math.Abs((int)BitConverter.ToInt16(e.Buffer, i)));
+                    peak = Math.Max(peak, max / 32768f);
+                };
+                monitor.StartRecording();
+                ticks = 0;
+                timer.Start();
+            }
+            catch (Exception ex)
+            {
+                StopMonitor();
+                meterNote.Text = $"Could not open this microphone: {ex.Message}";
+            }
+        }
+
+        combo.SelectionChanged += (_, _) =>
+        {
+            MicInfo.Choose(_settings, devices, combo.SelectedIndex);
+            if (monitor is not null)
+                StartMonitor();
+        };
         var stack = new StackPanel();
+        // The meter holds the mic open only while this page is on screen (a hidden window keeps its pages loaded).
+        stack.IsVisibleChanged += (_, _) =>
+        {
+            if (stack.IsVisible) StartMonitor(); else StopMonitor();
+        };
         stack.Children.Add(combo);
         stack.Children.Add(note);
+        stack.Children.Add(track);
+        stack.Children.Add(meterNote);
         return stack;
     }
 

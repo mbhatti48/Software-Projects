@@ -63,7 +63,7 @@ internal static class Screenshots
 
     private static AppSettings Clone(AppSettings s) => new()
     {
-        ModelPath = s.ModelPath, Language = s.Language, ForceCpu = s.ForceCpu, MicDeviceIndex = s.MicDeviceIndex,
+        ModelPath = s.ModelPath, Language = s.Language, ForceCpu = s.ForceCpu, MicDeviceIndex = s.MicDeviceIndex, MicDeviceName = s.MicDeviceName,
         AutoLearn = s.AutoLearn, Hotkey = s.Hotkey, HotkeyMode = s.HotkeyMode, InjectionMode = s.InjectionMode,
         OverlayPosition = s.OverlayPosition, OverlayScale = s.OverlayScale, OverlayOpacity = s.OverlayOpacity,
         OverlayEdgeMargin = s.OverlayEdgeMargin, Theme = s.Theme, Accent = s.Accent, UserName = s.UserName,
